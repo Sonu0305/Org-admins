@@ -162,7 +162,6 @@ def extract_infos(fpath):
         res['VersionInformationSize'] = 0
     return res
 
-
 def predict_malware_with_analysis(file_path):
     """
     Analyzes a PE file and determines if it is malware with detailed analysis.
@@ -186,13 +185,13 @@ def predict_malware_with_analysis(file_path):
     
     analysis = {
         "summary": {
-            "prediction": "malicious" if int(result) == 1 else "legitimate",
+            "prediction": "malicious" if int(result) == 0 else "legitimate",
             "prediction_code": int(result),
             "confidence_score": round(float(probability[int(result)]) * 100, 2),
             "confidence_distribution": {
-                "legitimate": round(float(probability[0]) * 100, 2),
-                "malicious": round(float(probability[1]) * 100, 2)
-            }
+            "legitimate": round(float(probability[1]) * 100, 2),
+            "malicious": round(float(probability[0]) * 100, 2)
+        }
         },
         "features": {
             "importance_ranking": [],
@@ -202,6 +201,7 @@ def predict_malware_with_analysis(file_path):
         "detailed_analysis": []
     }
     
+    # Feature importance based on your provided list - sorted by importance
     feature_importance = {
         'DllCharacteristics': 0.181008,
         'Machine': 0.114327,
@@ -228,8 +228,10 @@ def predict_malware_with_analysis(file_path):
         if feature in data:
             analysis["features"]["values"][feature] = data[feature]
     
+    # Analyze each important feature for suspicious characteristics
     feature_analysis = []
     
+    # DllCharacteristics analysis
     if 'DllCharacteristics' in data:
         dll_chars = data['DllCharacteristics']
         dll_analysis = {
@@ -242,7 +244,8 @@ def predict_malware_with_analysis(file_path):
             "observations": []
         }
         
-        if not (dll_chars & 0x0040):
+        # Check for suspicious DllCharacteristics
+        if not (dll_chars & 0x0040):  # No ASLR
             dll_analysis["observations"].append({
                 "finding": "ASLR disabled",
                 "description": "This is suspicious as modern legitimate software typically uses ASLR",
@@ -257,7 +260,7 @@ def predict_malware_with_analysis(file_path):
                 "risk_level": "low"
             })
             
-        if not (dll_chars & 0x0100):
+        if not (dll_chars & 0x0100):  # No DEP/NX
             dll_analysis["observations"].append({
                 "finding": "DEP/NX disabled",
                 "description": "This is suspicious as modern legitimate software typically uses DEP",
@@ -290,9 +293,11 @@ def predict_malware_with_analysis(file_path):
                 "hex_value": f"0x{dll_chars:04x}"
             })
     
+    # Machine analysis
     if 'Machine' in data:
         machine_val = data['Machine']
         
+        # Machine types from pefile's documentation
         machine_types = {
             0x014c: 'x86 (32-bit)',
             0x0200: 'IA64 (Itanium)',
@@ -351,7 +356,7 @@ def predict_malware_with_analysis(file_path):
         
         characteristics_flags = []
         
-        if char_val & 0x0002:
+        if char_val & 0x0002:  # IMAGE_FILE_EXECUTABLE_IMAGE
             characteristics_flags.append("EXECUTABLE_IMAGE")
             char_analysis["observations"].append({
                 "finding": "File is executable",
@@ -359,7 +364,7 @@ def predict_malware_with_analysis(file_path):
                 "risk_level": "info"
             })
         
-        if char_val & 0x2000:
+        if char_val & 0x2000:  # IMAGE_FILE_DLL
             characteristics_flags.append("DLL")
             char_analysis["observations"].append({
                 "finding": "File is a DLL",
@@ -367,7 +372,7 @@ def predict_malware_with_analysis(file_path):
                 "risk_level": "info"
             })
         
-        if char_val & 0x0001:
+        if char_val & 0x0001:  # IMAGE_FILE_RELOCS_STRIPPED
             characteristics_flags.append("RELOCS_STRIPPED")
             char_analysis["observations"].append({
                 "finding": "Relocations stripped",
@@ -385,10 +390,12 @@ def predict_malware_with_analysis(file_path):
                 "description": "Relocations stripped"
             })
         
+        # Add flags as structured data for visualizations
         char_analysis["flags"] = characteristics_flags
             
         feature_analysis.append(char_analysis)
     
+    # Entropy analysis
     if 'SectionsMaxEntropy' in data:
         entropy_val = data['SectionsMaxEntropy']
         entropy_analysis = {
@@ -400,6 +407,7 @@ def predict_malware_with_analysis(file_path):
             "observations": []
         }
         
+        # Categorize entropy levels for visualization
         if entropy_val > 7.0:
             entropy_category = "Very High"
             entropy_analysis["observations"].append({
@@ -436,6 +444,7 @@ def predict_malware_with_analysis(file_path):
         entropy_analysis["entropy_category"] = entropy_category
         feature_analysis.append(entropy_analysis)
     
+    # ImageBase analysis
     if 'ImageBase' in data:
         image_base = data['ImageBase']
         base_analysis = {
@@ -448,6 +457,7 @@ def predict_malware_with_analysis(file_path):
             "observations": []
         }
         
+        # Common ImageBase values
         common_bases = {
             0x00400000: "Standard base address for Windows executables",
             0x10000000: "Standard base address for older Windows executables",
@@ -497,6 +507,7 @@ def predict_malware_with_analysis(file_path):
             
         feature_analysis.append(base_analysis)
     
+    # ResourcesMaxEntropy analysis
     if 'ResourcesMaxEntropy' in data and data.get('ResourcesNb', 0) > 0:
         res_entropy_val = data['ResourcesMaxEntropy']
         res_entropy_analysis = {
@@ -541,9 +552,11 @@ def predict_malware_with_analysis(file_path):
             
         feature_analysis.append(res_entropy_analysis)
     
+    # Subsystem analysis
     if 'Subsystem' in data:
         subsystem_val = data['Subsystem']
         
+        # Subsystem types
         subsystems = {
             1: "Native - Not designed to run in Windows environment",
             2: "Windows GUI",
@@ -576,6 +589,7 @@ def predict_malware_with_analysis(file_path):
             }]
         }
         
+        # Categorize for visualization
         if subsystem_val in [2, 3]:
             subsystem_analysis["category"] = "Common"
         elif subsystem_val in [9, 10, 11, 12, 16]:
@@ -616,6 +630,7 @@ def predict_malware_with_analysis(file_path):
             
         feature_analysis.append(subsystem_analysis)
         
+    # VersionInformationSize analysis
     if 'VersionInformationSize' in data:
         version_size = data['VersionInformationSize']
         version_analysis = {
@@ -662,6 +677,7 @@ def predict_malware_with_analysis(file_path):
             
         feature_analysis.append(version_analysis)
     
+    # Add remaining features with their values
     for feature in feature_importance:
         if feature in data and not any(fa["feature_name"] == feature for fa in feature_analysis):
             feature_val = data[feature]
@@ -679,12 +695,16 @@ def predict_malware_with_analysis(file_path):
             }
             feature_analysis.append(simple_analysis)
     
+    # Add detailed analysis to output
     analysis["detailed_analysis"] = feature_analysis
     
+    # Generate risk metrics
     suspicious_count = len(analysis["features"]["suspicious_features"])
     high_risk_count = sum(1 for f in analysis["features"]["suspicious_features"] if f.get("risk_level") == "high")
     medium_risk_count = sum(1 for f in analysis["features"]["suspicious_features"] if f.get("risk_level") == "medium")
     
+    # Calculate overall risk score (0-100)
+    # Weighted: high risk = 25 points, medium risk = 10 points, presence of any suspicious features = min 20 points
     risk_score = min(100, (high_risk_count * 25) + (medium_risk_count * 10) + (20 if suspicious_count > 0 else 0))
     
     analysis["risk_metrics"] = {
@@ -696,6 +716,7 @@ def predict_malware_with_analysis(file_path):
         "risk_level": "high" if risk_score > 70 else "medium" if risk_score > 30 else "low"
     }
     
+    # Generate summary statement
     if suspicious_count > 0:
         analysis["summary"]["threat_summary"] = f"Found {suspicious_count} suspicious features with {high_risk_count} high-risk indicators."
     else:
